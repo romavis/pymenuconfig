@@ -1,0 +1,98 @@
+mainmenu "Example project configuration"
+
+config MODULES
+    bool "Enable modules"
+    option modules
+
+menu "Example menu"
+
+config TEST_OPTION
+    tristate "Test option"
+    depends on MODULES
+
+config TEST_OPTION_DEP
+    tristate "Dependent test option"
+    depends on TEST_OPTION
+
+config STRINGCFG
+    string "Enter string"
+
+config INTCFG
+    int "Enter int from 0 to 10"
+    range 0 10
+    default 5
+
+config INTCFG_UNLIMITED
+    int "Enter unlimited int"
+    default 0
+
+config HEXCFG
+    hex "Enter hex from 100 to 1ff"
+    range 0x100 1ff
+    default 100
+
+config SHOW_ITEMS
+    bool "Show items"
+
+if SHOW_ITEMS
+
+config ITEM_1
+    bool "Item 1"
+
+comment "Comment"
+
+config ITEM_2
+    bool "Item 2"
+
+menuconfig SHOW_ANOTHER
+    bool "Show another"
+
+if SHOW_ANOTHER != 0
+
+config ANOTHER_1
+    bool "Another 1"
+
+config ANOTHER_2
+    bool "Another 2"
+    select ANOTHER_1
+
+endif
+
+endif
+
+choice TEST_CHOICE
+    tristate "Choose test"
+    depends on MODULES
+
+config CH_TEST_1
+    bool "Test 1"
+
+config CH_TEST_1
+    bool "Test 1 (refers to same symbol)"
+
+config CH_TEST_2
+    tristate "Test 2 (tristate)"
+
+config CH_TEST_3
+    bool "Test 3"
+
+config CH_TEST_4
+    bool "Test 4 (depends on Test 3)"
+    depends on CH_TEST_3
+
+endchoice
+
+config SHOW_FANCY_MENU
+    bool "Show fancy menu"
+
+menu "Fancy menu"
+visible if SHOW_FANCY_MENU
+
+config FANCY_MENU_ENTRY_1
+    bool "Fancy menu entry 1"
+
+# Fancy menu
+endmenu
+
+# Example menu
+endmenu
