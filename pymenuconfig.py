@@ -409,7 +409,7 @@ class ListEntry(object):
             )
             lines.append('Type  : {}'.format(kconfiglib.TYPE_TO_STR[item.type]))
             for n in item.nodes:
-                lines.append('Prompt: {}'.format(n.prompt[0] if n.prompt[0] else '<EMPTY>'))
+                lines.append('Prompt: {}'.format(n.prompt[0] if n.prompt else '<EMPTY>'))
                 lines.append('  Defined at {}:{}'.format(n.filename, n.linenr))
                 lines.append('  Depends on: {}'.format(kconfiglib.expr_str(n.dep)))
             text = '\n'.join(lines)
@@ -655,6 +655,28 @@ class MenuConfig(object):
         for n,c in widget.children.items():
             self._set_option_to_all_children(c, option, value)
 
+    @property
+    def _selected_entry(self):
+        # type: (...) -> ListEntry
+        active_idx = self.list.index(tk.ACTIVE)
+        if active_idx >= 0 and active_idx < len(self.shown_entries):
+            return self.shown_entries[active_idx]
+        return None
+
+    def _select_node(self, node):
+        # type: (kconfiglib.MenuNode) -> None
+        """
+        Attempts to select entry that corresponds to given MenuNode in main listbox
+        """
+        idx = None
+        for i, e in enumerate(self.shown_entries):
+            if e.node is node:
+                idx = i
+                break
+        if idx is not None:
+            self.list.activate(idx)
+            self.list.see(idx)
+
     def handle_keypress(self, ev):
         keysym = ev.keysym
         if keysym == 'Left':
@@ -662,17 +684,17 @@ class MenuConfig(object):
         elif keysym == 'Right':
             self._select_action(prev=False)
         elif keysym == 'space':
-            self.shown_entries[self.list.index(tk.ACTIVE)].toggle()
+            self._selected_entry.toggle()
         elif keysym in ('n', 'm', 'y'):
-            self.shown_entries[self.list.index(tk.ACTIVE)].set_tristate_value(kconfiglib.STR_TO_TRI[keysym])
+            self._selected_entry.set_tristate_value(kconfiglib.STR_TO_TRI[keysym])
         elif keysym == 'Return':
             action = self.tk_selected_action.get()
             if action == self.ACTION_SELECT:
-                self.shown_entries[self.list.index(tk.ACTIVE)].select()
+                self._selected_entry.select()
             elif action == self.ACTION_EXIT:
                 self._action_exit()
             elif action == self.ACTION_HELP:
-                self.shown_entries[self.list.index(tk.ACTIVE)].show_help()
+                self._selected_entry.show_help()
             elif action == self.ACTION_LOAD:
                 if self.prevent_losing_changes():
                     self.open_config()
@@ -732,34 +754,35 @@ class MenuConfig(object):
             n = n.next
         return entries
 
-    def refresh_display(self):
+    def refresh_display(self, reset_selection=False):
         # Refresh list entries' attributes
         for e in self.all_entries:
             e.refresh()
         # Try to preserve selection upon refresh
-        selected_entry = None
-        active_idx = self.list.index(tk.ACTIVE)
-        if active_idx >= 0 and active_idx < len(self.shown_entries):
-            selected_entry = self.shown_entries[active_idx]
+        selected_entry = self._selected_entry
+        # Also try to preserve listbox scroll offset
+        # If not preserved, the see() method will make wanted item to appear
+        # at the bottom of the list, even if previously it was in center
+        scroll_offset = self.list.yview()[0]
         # Show only visible entries
         self.shown_entries = [e for e in self.all_entries if e.visible]
         # Refresh listbox contents
         self.list.delete(0, tk.END)
         self.list.insert(0, *self.shown_entries)
-        # Activate previously selected item
-        idx = 0
-        for i, e in enumerate(self.shown_entries):
-            if e is selected_entry:
-                idx = i
-                break
-        self.list.activate(idx)
-        self.list.see(idx)
+        if selected_entry and not reset_selection:
+            # Restore scroll position
+            self.list.yview_moveto(scroll_offset)
+            # Activate previously selected node
+            self._select_node(selected_entry.node)
+        else:
+            # Select the topmost entry
+            self.list.activate(0)
         # Select ACTION_SELECT on each refresh (mimic C menuconfig)
         self.tk_selected_action.set(self.ACTION_SELECT)
         # Display current location in configuration tree
         pos = []
         for n in self.node_stack + [self.node]:
-            pos.append(n.prompt[0] if n.prompt is not None else '[none]')
+            pos.append(n.prompt[0] if n.prompt else '[none]')
         self.label_position['text'] = u'# ' + u' → '.join(pos)
 
     def show_node(self, node):
@@ -768,7 +791,7 @@ class MenuConfig(object):
             self.all_entries = self._collect_list_entries(node.list)
         else:
             self.all_entries = []
-        self.refresh_display()
+        self.refresh_display(reset_selection=True)
 
     def show_submenu(self, node):
         self.node_stack.append(self.node)
@@ -776,7 +799,11 @@ class MenuConfig(object):
 
     def show_parent(self):
         if self.node_stack:
-            self.show_node(self.node_stack.pop())
+            select_node = self.node
+            parent_node = self.node_stack.pop()
+            self.show_node(parent_node)
+            # Restore previous selection
+            self._select_node(select_node)
 
     def ask_for_string(self, ident=None, title='Enter string', value=None):
         """
@@ -1010,6 +1037,8 @@ def _center_window(root, window):
     x = (ws / 2) - (w / 2)
     y = (hs / 2) - (h / 2)
     window.geometry('+{:d}+{:d}'.format(int(x), int(y)))
+    window.lift()
+    window.focus_force()
 
 
 def _center_window_above_parent(root, window):
@@ -1031,6 +1060,8 @@ def _center_window_above_parent(root, window):
     x = px + (pw / 2) - (w / 2)
     y = py + (ph / 2) - (h / 2)
     window.geometry('+{:d}+{:d}'.format(int(x), int(y)))
+    window.lift()
+    window.focus_force()
 
 
 def main(argv=None):
